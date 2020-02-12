@@ -1,9 +1,10 @@
 import numpy as np
+from sklearn.utils.random import sample_without_replacement
 
 
 class NerualNetwork:
 
-    def __init__(self, layer_list=[], solver="gd", learning_rate=0.01, C=1.0, max_iter=200, early_stopping=False, tol=1e-4, n_iter_no_change=5):
+    def __init__(self, layer_list=[], solver="gd", learning_rate=0.01, C=1.0, max_iter=200):
         assert solver in ("gd", "mdg"), "solve should be one of ('gd','mgd')\n"
         self.learning_rate = learning_rate
         self.C = C
@@ -15,10 +16,6 @@ class NerualNetwork:
         self.weights = {}
         self.bias = {}
         self.tmp = {}
-
-        self.early_stopping = early_stopping
-        self.tol = tol
-        self.n_iter_no_change = n_iter_no_change
 
         self.__initlization()
 
@@ -67,33 +64,33 @@ class NerualNetwork:
 
         pass
 
-    def __converge(self):
-        # validation data上的损失
-        n = len(self.loss)
-        converged = False
-        if n > self.n_iter_no_change:
-            count = 0
-            for i in range(n - self.n_iter_no_change - 1, n):
-                if (abs(self.loss[i-1] - self.loss[i])) < self.tol:
-                    count += 1
+    def fit(self, X, Y, batch_size=None):
 
-            converged = count == self.n_iter_no_change
-        return converged
+        if not batch_size:
+            it = 0
+            while it < self.max_iter:
+                self.__forward(X)
 
-    def fit(self, X, Y):
-        it = 0
-        while it < self.max_iter:
-            self.__forward(X)
+                self.loss.append(self.__compute_loss(
+                    Y, self.tmp["A" + str(self.n_layers)]))
 
-            self.loss.append(self.__compute_loss(
-                Y, self.tmp["A" + str(self.n_layers)]))
+                self.__backward(Y)
 
-            self.__backward(Y)
+                it += 1
+        else:
+            it = 0
+            m = Y.shape[1]
+            while it < self.max_iter:
 
-            it += 1
+                index = sample_without_replacement(
+                    n_population=m, n_samples=batch_size)
 
-            # if self.early_stopping and self.__converge():
-            # break
+                self.__forward(X[:, index])
+                self.loss.append(self.__compute_loss(
+                    Y[:, index], self.tmp["A" + str(self.n_layers)]))
+                self.__backward(Y[:, index])
+
+                it += 1
 
         # for i in range(1, self.n_layers + 1, 1):
         #     del self.tmp["A" + str(i)]

@@ -4,17 +4,25 @@ from sklearn.utils.random import sample_without_replacement
 
 class NerualNetwork:
 
-    def __init__(self, layer_list=[], solver="gd", learning_rate=0.01, C=1.0, max_iter=200):
-        assert solver in ("gd", "mdg"), "solve should be one of ('gd','mgd')\n"
+    def __init__(self, layer_list=[], solver="gd", learning_rate=0.01, beta=0.9, C=1.0, max_iter=200):
+        assert solver in ("gd", "mgd"), "solve should be one of ('gd','mgd')\n"
+
+        self.solver = solver
+        self.beta = beta
         self.learning_rate = learning_rate
         self.C = C
+
         self.max_iter = max_iter
+
         self.layer_list = layer_list
         self.n_layers = len(layer_list)
         self.n_outputs = layer_list[-1]
         self.loss = []
+
         self.weights = {}
         self.bias = {}
+        self.Vw = {}
+        self.Vb = {}
         self.tmp = {}
 
         self.__initlization()
@@ -25,6 +33,9 @@ class NerualNetwork:
             n_next = self.layer_list[i]
             self.weights["W" + str(i)] = np.random.normal(size=(n_next, n_cur))
             self.bias["b" + str(i)] = np.random.normal(size=(n_next, 1))
+            if self.solver == "mgd":
+                self.Vw["VW" + str(i)] = np.zeros((n_next, n_cur))
+                self.Vb["Vb" + str(i)] = np.zeros((n_next, 1))
 
     def __compute_loss(self, Y, Y_):
         m = Y.shape[1]
@@ -56,13 +67,27 @@ class NerualNetwork:
             tmp = W.T @ delta * A * (1 - A)
             DW = (delta @ A.T + self.C * W) / m
             Db = delta.sum(axis=1, keepdims=True) / m
-            self.weights["W" + str(i)] = W - self.learning_rate * DW
-            self.bias["b" + str(i)] = b - self.learning_rate * Db
+            self.__update(W, b, DW, Db, i)
+
             delta = tmp
 
-    def __update(self):
+    def __update(self, W, b, DW, Db, i):
+        if self.solver == "mgd":
+            VW = self.Vw["VW" + str(i)]
+            Vb = self.Vb["Vb" + str(i)]
 
-        pass
+            VW = self.beta * VW + (1 - self.beta) * DW
+            Vb = self.beta * Vb + (1 - self.beta) * Db
+
+            self.Vw["VW" + str(i)] = VW
+            self.Vb["Vb" + str(i)] = Vb
+
+            self.weights["W" + str(i)] = W - self.learning_rate * VW
+            self.bias["b" + str(i)] = b - self.learning_rate * Vb
+
+        if self.solver == "gd":
+            self.weights["W" + str(i)] = W - self.learning_rate * DW
+            self.bias["b" + str(i)] = b - self.learning_rate * Db
 
     def fit(self, X, Y, batch_size=None):
 

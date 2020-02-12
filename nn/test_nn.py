@@ -53,6 +53,35 @@ def test2():
     plt.savefig("mbgd.png", dpi=800)
 
 
+def test3():
+    X, y = datasets.load_wine(return_X_y=True)
+    Y = LabelBinarizer().fit_transform(y)
+    X = X.T
+    Y = Y.T
+
+    layer_list = [X.shape[0], 10, 10, Y.shape[0]]
+    n_iter = 250
+    batch_size = 32
+
+    clf1 = NerualNetwork(
+        solver="mgd", layer_list=layer_list, max_iter=n_iter, C=0)
+    clf1.fit(X, Y, batch_size=batch_size)
+
+    clf2 = NerualNetwork(
+        solver="gd", layer_list=layer_list, max_iter=n_iter, C=0)
+    clf2.fit(X, Y, batch_size=batch_size)
+
+    plt.style.use("seaborn-darkgrid")
+    plt.figure(figsize=(5, 4))
+    plt.plot([i for i in range(len(clf1.loss))], clf1.loss, label="mgd")
+    plt.plot([i for i in range(len(clf2.loss))], clf2.loss, label="gd")
+    plt.legend()
+    plt.xlabel("No. of iteration")
+    plt.ylabel("Cost")
+    plt.show()
+    plt.savefig("gd_and_mgd.png", dpi=800)
+
+
 if __name__ == "__main__":
-    test2()
+    test3()
     pass
