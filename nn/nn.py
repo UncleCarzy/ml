@@ -5,16 +5,25 @@ from math import exp
 
 class NerualNetwork:
 
-    def __init__(self, layer_list=[], solver="gd", learning_rate=0.01, beta1=0.9, beta2=0.9, C=1.0, max_iter=200):
+    def __init__(self, layer_list=[], solver="gd", learning_rate_init=0.01, lr_decay=None, beta1=0.9, beta2=0.9, C=1.0, max_iter=200):
 
         assert solver in (
             "gd", "mgd", "RMSprop"), "solve should be one of ('gd','mgd','RMSprop')\n"
+
+        # SLR: StepLR
+        # ELR:ExponentialLR
+        # MLR:MultiStepLR
+        # CLR:CosineAnnealingLR
+        assert lr_decay in (None, "SLR", "ELR", "MSLR", "CALR")
 
         self.solver = solver
         self.beta1 = beta1
         self.beta2 = beta2
         self.epslion = 1e-8
-        self.learning_rate = learning_rate
+
+        self.lr_decay = lr_decay
+        self.learning_rate_init = learning_rate_init
+        self.learning_rate = self.learning_rate_init
         self.C = C
 
         self.max_iter = max_iter
@@ -167,5 +176,23 @@ class NerualNetwork:
         #         return exp(x) / (1.0 + exp(x))
         # vsafe_sigmoid = np.vectorize(safe_sigmoid)
         # return vsafe_sigmoid(z)
-
         return 1.0 / (1.0 + np.exp(-z))
+
+    def __learning_rate_dacay(self, n_iter):
+        if "SLR" == self.lr_decay:
+            v = n_iter / self.max_iter
+            for i in range(0, 10):
+                if v >= i * 0.1 and v < (i+1) * 0.1:
+                    self.learning_rate = self.learning_rate_init / 2 ** i
+                    break
+            return
+
+        if "ELR" == self.lr_decay:
+            v = n_iter / self.max_iter
+            self.learning_rate = self.learning_rate_init * exp(- v / (1 - v))
+            return
+
+        if "MSLR" == self.lr_decay:
+            pass
+        if "CALR" == self.lr_decay:
+            pass
