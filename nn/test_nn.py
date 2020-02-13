@@ -67,6 +67,7 @@ def test3():
         solver="mgd", layer_list=layer_list, max_iter=n_iter, C=0)
     clf1.fit(X, Y, batch_size=batch_size)
 
+
     clf2 = NerualNetwork(
         solver="gd", layer_list=layer_list, max_iter=n_iter, C=0)
     clf2.fit(X, Y, batch_size=batch_size)
