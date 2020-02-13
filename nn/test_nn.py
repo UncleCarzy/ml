@@ -1,6 +1,6 @@
 from nn import NerualNetwork
 from sklearn import datasets
-from sklearn.preprocessing import LabelBinarizer
+from sklearn.preprocessing import LabelBinarizer, StandardScaler
 import matplotlib.pyplot as plt
 
 
@@ -71,10 +71,23 @@ def test3():
         solver="gd", layer_list=layer_list, max_iter=n_iter, C=0)
     clf2.fit(X, Y, batch_size=batch_size)
 
+    X = StandardScaler().fit_transform(X)
+    clf3 = NerualNetwork(
+        solver="mgd", layer_list=layer_list, max_iter=n_iter, C=0)
+    clf3.fit(X, Y, batch_size=batch_size)
+
+    clf4 = NerualNetwork(
+        solver="gd", layer_list=layer_list, max_iter=n_iter, C=0)
+    clf4.fit(X, Y, batch_size=batch_size)
+
     plt.style.use("seaborn-darkgrid")
     plt.figure(figsize=(5, 4))
     plt.plot([i for i in range(len(clf1.loss))], clf1.loss, label="mgd")
     plt.plot([i for i in range(len(clf2.loss))], clf2.loss, label="gd")
+    plt.plot([i for i in range(len(clf3.loss))],
+             clf3.loss, label="mgd-standard")
+    plt.plot([i for i in range(len(clf4.loss))],
+             clf4.loss, label="mgd-standard")
     plt.legend()
     plt.xlabel("No. of iteration")
     plt.ylabel("Cost")
