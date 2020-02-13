@@ -4,11 +4,15 @@ from sklearn.utils.random import sample_without_replacement
 
 class NerualNetwork:
 
-    def __init__(self, layer_list=[], solver="gd", learning_rate=0.01, beta=0.9, C=1.0, max_iter=200):
-        assert solver in ("gd", "mgd"), "solve should be one of ('gd','mgd')\n"
+    def __init__(self, layer_list=[], solver="gd", learning_rate=0.01, beta1=0.9, beta2=0.9, C=1.0, max_iter=200):
+
+        assert solver in (
+            "gd", "mgd", "RMSprop"), "solve should be one of ('gd','mgd','RMSprop')\n"
 
         self.solver = solver
-        self.beta = beta
+        self.beta1 = beta1
+        self.beta2 = beta2
+        self.epslion = 1e-8
         self.learning_rate = learning_rate
         self.C = C
 
@@ -33,7 +37,7 @@ class NerualNetwork:
             n_next = self.layer_list[i]
             self.weights["W" + str(i)] = np.random.normal(size=(n_next, n_cur))
             self.bias["b" + str(i)] = np.random.normal(size=(n_next, 1))
-            if self.solver == "mgd":
+            if self.solver == "mgd" or self.solver == "RMSprop":
                 self.Vw["VW" + str(i)] = np.zeros((n_next, n_cur))
                 self.Vb["Vb" + str(i)] = np.zeros((n_next, 1))
 
@@ -76,14 +80,29 @@ class NerualNetwork:
             VW = self.Vw["VW" + str(i)]
             Vb = self.Vb["Vb" + str(i)]
 
-            VW = self.beta * VW + (1 - self.beta) * DW
-            Vb = self.beta * Vb + (1 - self.beta) * Db
+            VW = self.beta1 * VW + (1 - self.beta1) * DW
+            Vb = self.beta1 * Vb + (1 - self.beta1) * Db
 
             self.Vw["VW" + str(i)] = VW
             self.Vb["Vb" + str(i)] = Vb
 
             self.weights["W" + str(i)] = W - self.learning_rate * VW
             self.bias["b" + str(i)] = b - self.learning_rate * Vb
+
+        if self.solver == "RMSprop":
+            VW = self.Vw["VW" + str(i)]
+            Vb = self.Vb["Vb" + str(i)]
+
+            VW = self.beta2 * VW + (1 - self.beta2) * (DW ** 2)
+            Vb = self.beta2 * Vb + (1 - self.beta2) * (Vb ** 2)
+
+            self.Vw["VW" + str(i)] = VW
+            self.Vb["Vb" + str(i)] = Vb
+
+            self.weights["W" + str(i)] = W - self.learning_rate * \
+                (DW / (np.sqrt(VW) + self.epslion))
+            self.bias["b" + str(i)] = b - self.learning_rate * \
+                (Db / (np.sqrt(Vb) + self.epslion))
 
         if self.solver == "gd":
             self.weights["W" + str(i)] = W - self.learning_rate * DW
