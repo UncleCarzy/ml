@@ -10,12 +10,12 @@ def test1():
     X = X.T
     Y = Y.T
 
-    # X = StandardScaler().fit_transform(X)
-    X = MinMaxScaler().fit_transform(X)
+    X = StandardScaler().fit_transform(X)
+    # X = MinMaxScaler().fit_transform(X)
 
-    n_iter = 100
+    n_iter = 500
     layer_list = [4, 10, 3]
-    batch_size = 16
+    batch_size = 8
 
     clf1 = NerualNetwork(layer_list=layer_list, solver="gd",
                          learning_rate=0.01, max_iter=n_iter, C=0)
@@ -25,8 +25,10 @@ def test1():
                          learning_rate=0.01, beta1=0.9, max_iter=n_iter, C=0)
     clf2.fit(X, Y, batch_size=batch_size)
 
+    # 损失函数中的sigmoid函数中的指数函数溢出，很可能learning_rate太大，
+    # 可以把learning_rate调成非常小，如1e-8
     clf3 = NerualNetwork(layer_list=layer_list, solver="RMSprop",
-                         learning_rate=0.01, beta2=0.999, max_iter=n_iter, C=0)
+                         learning_rate=1e-9, beta2=0.9999, max_iter=n_iter, C=0)
     clf3.fit(X, Y, batch_size=batch_size)
 
     plt.style.use("seaborn-darkgrid")

@@ -1,5 +1,6 @@
 import numpy as np
 from sklearn.utils.random import sample_without_replacement
+from math import exp
 
 
 class NerualNetwork:
@@ -43,11 +44,18 @@ class NerualNetwork:
 
     def __compute_loss(self, Y, Y_):
         m = Y.shape[1]
-        loss = None
-        loss = (- Y * np.log(Y_) - (1 - Y) * np.log(1 - Y_)).sum()
-        for i in range(1, self.n_layers, 1):
-            W = self.weights["W" + str(i)]
-            loss += 0.5 * self.C * W.sum()
+        # 损失函数中的sigmoid函数中的指数函数溢出，很可能learning_rate太大，
+        # 可以把learning_rate调成非常小，如1e-8
+
+        loss = -(Y * np.log(Y_) + (1 - Y) * np.log(1 - Y_)).sum()
+
+        # def safe_log(x): return np.clip(x, 1.e-100, 1.e+100)
+        # loss = -(Y * safe_log(Y_) + (1 - Y) * safe_log(1 - Y_)).sum()
+
+        if abs(self.C) > 1e-8:
+            for i in range(1, self.n_layers, 1):
+                W = self.weights["W" + str(i)]
+                loss += 0.5 * self.C * W.sum()
         loss /= m
         return loss
 
@@ -152,4 +160,12 @@ class NerualNetwork:
         return A
 
     def __sigmoid(self, z):
-        return 1 / (1 + np.exp(-z))
+        # def safe_sigmoid(x):
+        #     if x >= 0:
+        #         return 1.0 / (1.0 + exp(-x))
+        #     else:
+        #         return exp(x) / (1.0 + exp(x))
+        # vsafe_sigmoid = np.vectorize(safe_sigmoid)
+        # return vsafe_sigmoid(z)
+
+        return 1.0 / (1.0 + np.exp(-z))
