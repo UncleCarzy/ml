@@ -93,7 +93,6 @@ class SSVM(object):
         K = np.zeros((N, N))
         for i in range(0, N):
             for j in range(0, i + 1):
-                # print("i = %d\t j = %d" % (i, j))
                 K[i, j] = K[j, i] = self.__kernel_function(X[:, i], X[:, j])
 
         Q = matrix((y.reshape((-1, 1)) @ y.reshape((1, -1))) * K)
