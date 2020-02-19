@@ -51,11 +51,11 @@ def test1():
 def test2():
     # 软间隔
     X, y = load_data("wine", 2)
-    clf = SSVM()
+    clf = SSVM(kernel="linear")
     clf.fit_dual_problem(X, y)
     y_ = clf.predict(X)
     print(accuracy_score(y_, y))
-    print(len(clf.support_vector))
+    print(clf.n_sv)
 
     plt.style.use("ggplot")
     plt.figure(figsize=(5, 4))
@@ -63,13 +63,19 @@ def test2():
 
     # 画分割线
     x = np.linspace(10.0, X[0, :].max() / 10)
-    w, b = clf.w, clf.b
+    w, b = clf.coef, clf.intercept
     def f(x): return (-w[0] / w[1]) * x - (b / w[1])
     plt.plot(x, f(x), 'k--')
     # plt.show()
-    plt.savefig("svm\\soft_svm_by_pkg.png", dpi=200)
+    # plt.savefig("svm\\soft_svm_by_pkg.png", dpi=200)
+
+    clf = SSVM(kernel="rbf")
+    clf.fit_dual_problem(X, y)
+    y_ = clf.predict(X)
+    print(accuracy_score(y_, y))
+    print(clf.n_sv)
 
 
 if __name__ == "__main__":
-    test1()
-    # test2()
+    # test1()
+    test2()

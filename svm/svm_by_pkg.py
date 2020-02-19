@@ -76,16 +76,27 @@ class SSVM(object):
     binary classifier
     """
 
-    def __init__(self, C=1.0):
-        self.support_vector = []
-        self.w = None
-        self.b = None
+    def __init__(self, C=1.0, kernel="linear"):
+        assert kernel in ("linear", "rbf"), "kernel should be ('linear','rbf')"
+        self.kernel = kernel
+        self.support_vector = None
+        self.n_sv = None
+        self.n_feature = None
+        self.dual_coef = None
+        self.coef = None
+        self.intercept = None
         self.C = C
 
     def fit_dual_problem(self, X, y):
-        N = X.shape[1]
+        self.n_feature, N = X.shape
 
-        Q = matrix((y.reshape((-1, 1)) @ y.reshape((1, -1))) * (X.T @ X))
+        K = np.zeros((N, N))
+        for i in range(0, N):
+            for j in range(0, i + 1):
+                # print("i = %d\t j = %d" % (i, j))
+                K[i, j] = K[j, i] = self.__kernel_function(X[:, i], X[:, j])
+
+        Q = matrix((y.reshape((-1, 1)) @ y.reshape((1, -1))) * K)
         p = matrix([-1.0] * N)
 
         tmp_G = np.vstack((-np.eye(N), np.eye(N)))
@@ -97,19 +108,39 @@ class SSVM(object):
         b = matrix(0.0)
 
         sol = solvers.qp(Q, p, G, h, A, b)
-        lam = np.array(sol["x"])
-        lam = np.squeeze(lam)
+        self.dual_coef = np.squeeze(np.array(sol["x"]))
 
-        self.w = X @ (lam * y)
+        mask = self.dual_coef > 1e-3
+        self.n_sv = mask.sum()
+        self.dual_coef = self.dual_coef[mask]
+        X_sv, y_sv = X[:, mask], y[mask]
+        self.support_vector = (X_sv, y_sv)
 
-        mask = lam > 0.0
-        self.b = (y[mask] - self.w @ X[:, mask]).mean()
-        for index, flag in enumerate(mask):
-            if flag:
-                self.support_vector.append((X[:, index], y[index]))
-
+        if "linear" == self.kernel:
+            self.coef = X_sv @ (self.dual_coef * y_sv)
+        self.intercept = (y_sv - (self.dual_coef * y_sv)
+                          @ K[mask][:, mask]).mean()
         return self
 
     def predict(self, X):
-        y = self.w @ X + self.b
+        X_sv, y_sv = self.support_vector
+        N = X.shape[1]
+        K = np.zeros((self.n_sv, N))
+        for i in range(self.n_sv):
+            for j in range(N):
+                K[i, j] = self.__kernel_function(X_sv[:, i], X[:, j])
+
+        y = (self.dual_coef * y_sv) @ K + self.intercept
+        y = np.squeeze(y)
         return np.where(y > 0, 1.0, -1.0)
+
+    def __rbf(self, xi, xj):
+        diff = xi - xj
+        variance = 1.0
+        return np.exp(- (diff @ diff) / (2 * variance))
+
+    def __kernel_function(self, xi, xj):
+        if "rbf" == self.kernel:
+            return self.__rbf(xi, xj)
+        elif "linear" == self.kernel:
+            return xi @ xj
