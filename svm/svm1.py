@@ -19,7 +19,7 @@ class SVC(object):
         self.n_feature = None
 
         # 精度范围
-        self.epsilon = 1e-8
+        self.eps = 1e-8
 
         # 临时变量，训练完会删掉
         self.E = None
@@ -79,30 +79,33 @@ class SVC(object):
     def __initialize(self):
         N = self.y.shape[0]
         self.dual_coef = np.zeros(N)
+        self.intercept = 1.0
         self.E = np.zeros(N)
         for k in range(N):
             self.E[k] = self.__g(k) - self.y[k]
 
     def __stopping(self):
         # 判断是否满足KKT条件
-
+        # print("max: %.3f\t min: %.3f\t mean:%.7f" %
+            #   (self.dual_coef.max(), self.dual_coef.min(), self.dual_coef.mean()))
         # 线性约束
-        if not abs(self.dual_coef @ self.y) < self.epsilon:
+        if not abs(self.dual_coef @ self.y) < self.eps:
             return False
 
         # 边界约束 0.0 <= alpha <= C
-        if not (np.all(self.dual_coef >= 0.0) and np.all(self.dual_coef <= self.C)):
+        if not (np.all(0.0 <= self.dual_coef) and np.all(self.dual_coef <= self.C)):
             return False
 
         # 不等式约束
         N = self.y.shape[0]
         for k in range(N):
             tmp = self.y[k] * self.__g(k)
-            if not (tmp >= 1.0 and self.dual_coef[k]):
+            ak = self.dual_coef[k]
+            if abs(ak) < self.eps and not (tmp >= 1.0):
                 return False
-            elif not (abs(tmp) < self.epsilon and 0 < self.dual_coef[k] and self.dual_coef[k] < self.C):
+            elif (0 < ak and ak < self.C) and not (abs(tmp - 1.0) < self.eps):
                 return False
-            elif not(tmp <= 1.0 and abs(self.dual_coef[k] - self.C) < self.epsilon):
+            elif abs(ak - self.C) < self.eps and not (tmp <= 1.0):
                 return False
 
         return True
@@ -114,15 +117,13 @@ class SVC(object):
         while i < N:
             tmp = self.y[i] * self.__g(i)
             best_i = None
-            if abs(self.dual_coef[i]) < self.epsilon:
-                if tmp >= 1.0:
-                    best_i = i
-            elif self.dual_coef[i] > 0.0 and self.dual_coef[i] < self.C:
-                if abs(tmp - 1.0) < self.epsilon:
-                    best_i = i
-            elif abs(self.dual_coef[i] - self.C) < self.epsilon:
-                if tmp <= 1.0:
-                    best_i = i
+            ai = self.dual_coef[i]
+            if abs(ai) < self.eps and tmp >= 1.0:
+                best_i = i
+            elif (0.0 < ai and ai < self.C) and abs(tmp - 1.0) < self.eps:
+                best_i = i
+            elif abs(ai - self.C) < self.eps and tmp <= 1.0:
+                best_i = i
 
             if best_i:
                 best_j = None
@@ -130,14 +131,16 @@ class SVC(object):
                 for j in range(N):
                     if j != best_i:
                         diff_E = abs(self.E[best_i] - self.E[j])
-                        if diff_E > max_diff_E:
+                        if diff_E >= max_diff_E:
                             max_diff_E = diff_E
                             best_j = j
                 if best_j:
                     break
 
             i += 1
-
+        if 'max_diff_E' not in locals().keys():
+            quit()
+        print("max_diff = %f" % max_diff_E)
         return best_i, best_j
 
     def __solve(self, i, j):
@@ -149,12 +152,12 @@ class SVC(object):
         diff_E = self.E[i] - self.E[j]
         aj_unc = aj_old + self.y[j] * diff_E / eta
 
-        if self.y[i] == self.y[j]:
-            H = min(self.C, ai_old + aj_old)
-            L = max(0, ai_old + aj_old - self.C)
-        else:
-            H = min(self.C, self.C + aj_old - ai_old)
+        if self.y[i] != self.y[j]:
             L = max(0, aj_old - ai_old)
+            H = min(self.C, self.C + aj_old - ai_old)
+        else:
+            L = max(0, aj_old + ai_old - self.C)
+            H = min(self.C, aj_old + ai_old)
 
         if aj_unc > H:
             aj = H
@@ -173,6 +176,7 @@ class SVC(object):
             更新 dual_coef
             更新 E
         """
+        print("a%d = %f\t a%d = %f\n" % (i, ai, j, aj))
         diff_i = ai - self.dual_coef[i]
         diff_j = aj - self.dual_coef[j]
         intercept_i = - self.E[i] - self.y[i] * self.K[i, i] * \
