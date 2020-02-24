@@ -26,7 +26,7 @@ def test():
     plt.plot(np.linspace(-3, 2, 50), np.linspace(-3, 2, 50) + 1)
     plt.grid()
     plt.show()
-    clf = SVC(C=1.0)
+    clf = SVC(C=100.0)
     clf.fit(X, y)
     print(clf.evaluate(X, y))
 

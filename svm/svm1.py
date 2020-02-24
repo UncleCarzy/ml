@@ -3,7 +3,7 @@ import numpy as np
 
 class SVC(object):
 
-    def __init__(self, C=1.0, eps=1e-2, kernel="rbf"):
+    def __init__(self, C=1.0, eps=1e-4, kernel="rbf", max_iter=1000):
 
         assert kernel in (
             "rbf", "linear"), "kernel should be one of ('rbf','linear')\n"
@@ -18,8 +18,9 @@ class SVC(object):
         self.n_sv = None
         self.n_feature = None
         # 精度范围
-        self.eps = 0.1
-        self.tol = 1.0
+        self.eps = eps
+        # self.tol = eps
+        self.max_iter = max_iter
         # 临时变量，训练完会删掉
         self.E = None
         self.K = None
@@ -38,7 +39,7 @@ class SVC(object):
 
         self.__smo(X, y)  # 求得dual_coef
 
-        mask = self.dual_coef > 1e-3
+        mask = self.dual_coef > self.eps
         self.n_sv = mask.sum()
         self.dual_coef = self.dual_coef[mask]
         X_sv, y_sv = X[:, mask], y[mask]
@@ -50,6 +51,7 @@ class SVC(object):
         self.intercept = (y_sv - (self.dual_coef * y_sv)
                           @ self.K[mask][:, mask]).mean()
         del self.K
+        del self.y
         return self
 
     def predict(self, X):
@@ -67,15 +69,18 @@ class SVC(object):
     def __smo(self, X, y):
         # 序列最小优化算法
         self.__initialize()
+        iter = 0
         while True:
             i, j = self.__choose()
 
             ai, aj = self.__solve(i, j)
-            self.__object_value_change(ai, aj, i, j, True)
+            self.__object_value_change(ai, aj, i, j)
             self.__update(ai, aj, i, j)
 
-            if self.__stopping():
+            if self.__stopping() or iter > self.max_iter:
                 break
+            iter += 1
+        print("iter = ", iter)
 
     def __initialize(self):
         N = self.y.shape[0]
@@ -97,7 +102,7 @@ class SVC(object):
         # 边界约束 0.0 <= alpha <= C
         if not (np.all(0.0 <= self.dual_coef) and np.all(self.dual_coef <= self.C)):
             return False
-        print("11")
+
         # 不等式约束
         N = self.y.shape[0]
         for k in range(N):
@@ -173,7 +178,7 @@ class SVC(object):
         if flag:
             print("i = %d j = %d diff = %.5f" % (i, j, diff))
 
-        return diff >= self.tol
+        return diff >= self.eps
 
     def __check_KKT(self, i):
         # 检查训练样本(xi,yi)是否满足KKT条件
@@ -213,16 +218,17 @@ class SVC(object):
         ai = ai_old + self.y[i] * self.y[j] * (aj_old - aj)
         return ai, aj
 
-    def __update(self, ai, aj, i, j):
+    def __update(self, ai, aj, i, j, print_flat=False):
         """
         解出子问题之后
             更新 intercept
             更新 dual_coef
             更新 E
         """
-        print("old: a%d = %f\t a%d = %f" %
-              (i, self.dual_coef[i], j, self.dual_coef[j]))
-        print("new: a%d = %f\t a%d = %f\n" % (i, ai, j, aj))
+        if print_flat:
+            print("old: a%d = %f\t a%d = %f" %
+                  (i, self.dual_coef[i], j, self.dual_coef[j]))
+            print("new: a%d = %f\t a%d = %f\n" % (i, ai, j, aj))
         diff_i = ai - self.dual_coef[i]
         diff_j = aj - self.dual_coef[j]
         intercept_i = - self.E[i] - self.y[i] * self.K[i, i] * \
