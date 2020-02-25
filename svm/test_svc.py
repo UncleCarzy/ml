@@ -1,4 +1,5 @@
 import sys
+import time
 
 import matplotlib.pyplot as plt
 import numpy as np
@@ -28,36 +29,48 @@ def load_data(dataset_name, n_features=2):
     return X, y
 
 
-def plot_split_line(clf, X, y, filename):
+def plot_split_line(clf1, clf2, X, y, filename):
     plt.style.use("ggplot")
     plt.figure(figsize=(5, 4))
     plt.scatter(X[0, :], X[1, :], c=y)
 
     # 画分割线
-    x = np.linspace(-4, 2)
-    w, b = clf.coef, clf.intercept
-    def f(x): return (-w[0] / w[1]) * x - (b / w[1])
-    plt.plot(x, f(x), 'k--')
-    plt.savefig(filename)
+    def f(x, w, b): return (-w[0] / w[1]) * x - (b / w[1])
+    x = np.linspace(-3, 1.5)
+    # x = np.linspace(X[0, :].min() / 20, X[0, :].max()/10)
+    w1, b1 = clf1.coef, clf1.intercept
+    plt.plot(x, f(x, w1, b1), 'k--', label="SMO")
+
+    w2, b2 = clf2.coef, clf2.intercept
+    plt.plot(x, f(x, w2, b2), 'r--', label="QP")
+    plt.legend()
+    plt.savefig(filename, dpi=300)
 
 
 def test():
     X, y = load_data("iris", 2)
-    clf = SVC(C=1.0, kernel="linear", eps=1e-4, max_iter=1000)
-    clf.fit(X, y)
-    y_ = clf.predict(X)
-    print(accuracy_score(y_, y))
-    print(clf.n_sv)
-    print(clf.dual_coef)
-    print(clf.coef)
-    print(clf.intercept)
-    plot_split_line(clf, X, y, "svm\\1.png")
+    start = time.time()
+    clf1 = SVC(C=1.0, kernel="linear", eps=1e-4, max_iter=500)
+    clf1.fit(X, y)
+    print('time span:', time.time() - start)
+    y_1 = clf1.predict(X)
 
+    start = time.time()
     clf2 = SSVM()
     clf2.fit_dual_problem(X, y)
-    y_ = clf2.predict(X)
-    print(accuracy_score(y_, y))
-    plot_split_line(clf2, X, y, "svm\\2.png")
+    print('time span:', time.time() - start)
+    y_2 = clf2.predict(X)
+
+    print("ACC: clf1 = %.4f \t clf2 = %.4f" %
+          (accuracy_score(y_1, y), accuracy_score(y_2, y)))
+    print("n_sv: clf1 = %d \t clf2 = %d" % (clf1.n_sv, clf2.n_sv))
+    # print("dual_coef:")
+    # print("clf1 = ", clf1.dual_coef)
+    # print("clf2 = ", clf2.dual_coef)
+    print("coef: clf1 = ", clf1.coef, " \t clf2 = ", clf2.coef)
+    print("intercept: clf1 = ", clf1.intercept, " \t clf2 = ", clf2.intercept)
+
+    plot_split_line(clf1, clf2, X, y, "svm\\SVC.png")
 
 
 if __name__ == "__main__":

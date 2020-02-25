@@ -1,4 +1,5 @@
 import numpy as np
+from math import fabs
 
 
 class SVC(object):
@@ -72,11 +73,9 @@ class SVC(object):
         iter = 0
         while True:
             i, j = self.__choose()
-
             ai, aj = self.__solve(i, j)
             self.__object_value_change(ai, aj, i, j)
             self.__update(ai, aj, i, j)
-
             if self.__stopping() or iter > self.max_iter:
                 break
             iter += 1
@@ -85,7 +84,6 @@ class SVC(object):
     def __initialize(self):
         N = self.y.shape[0]
         self.dual_coef = np.zeros(N)
-        # self.dual_coef = np.clip(np.random.normal(size=N), 0, self.C)
         self.intercept = 0.0
         self.E = np.zeros(N)
         for k in range(N):
@@ -96,7 +94,7 @@ class SVC(object):
         # print("max: %.3f\t min: %.3f\t mean:%.7f" %
             #   (self.dual_coef.max(), self.dual_coef.min(), self.dual_coef.mean()))
         # 线性约束
-        if not abs(self.dual_coef @ self.y) < self.eps:
+        if not fabs(self.dual_coef @ self.y) < self.eps:
             return False
 
         # 边界约束 0.0 <= alpha <= C
@@ -105,51 +103,63 @@ class SVC(object):
 
         # 不等式约束
         N = self.y.shape[0]
-        for k in range(N):
-            if not self.__check_KKT(k):
+        for i in range(N):
+            if not self.__check_KKT(i):
                 return False
         return True
 
+    def __choose_j_random(self, i):
+        N = self.y.shape[0]
+        while True:
+            j = np.random.choice(N, 1)[0]
+            if j != i:
+                return j
+
     def __choose(self):
+        best_i, best_j = None, None
+        N = self.y.shape[0]
+        a = self.dual_coef
+        svp_list = [k for k in range(N) if (
+            0.0 < a[k] and a[k] < self.C)]
+        all_list = [k for k in range(N)]
+        best_i, best_j = self.__choose_ij(svp_list)
+        if best_i == None and best_j == None:
+            best_i, best_j = self.__choose_ij(all_list)
+            if best_i == None and best_j == None:
+                best_i, best_j = np.random.choice(N, 2)
+                # raise Exception("选不出合适的i,j\n")
+        return best_i, best_j
+
+    def __choose_ij(self, index_list):
         # 选择违背KKT条件最厉害的变量 alpha1, alpha2
         # 外层循环首先遍历所有 0 < ai < C 的样本点，即在间隔边界上的支持向量点，检验它们是否满足KKT条件
         # 如果这些样本点都满足KKT条件，那么遍历整个训练集，检验它们是否满足KKT条件
         best_i, best_j = None, None
         i = 0
         N = self.y.shape[0]
-        while i < N:
-            if self.__check_KKT(i):
-                j = self.__choose_j_by_maxE(i)
-                ai, aj = self.__solve(i, j)
-                if self.__object_value_change(ai, aj, i, j):
-                    return i, j
-                    # best_i, best_j = i, j
-                    # break
+        a = self.dual_coef
+        for i in index_list:
+            if (self.y[i] * self.E[i] < - self.eps and a[i] < self.C) or \
+                    (self.y[i] * self.E[i] > self.eps and a[i] > 0.0):
+                j = self.__choose_j_random(i)
 
-                a = self.dual_coef
+                # j = self.__choose_j_by_maxE(i)
+                ai, aj = self.__solve(i, j)
+                if fabs(a[i] - ai) > self.eps:
+                    return i, j
+
                 svp_list = [k for k in range(N) if (k != i and
                                                     0.0 < a[k] and a[k] < self.C)]
                 for j in svp_list:
                     ai, aj = self.__solve(i, j)
                     if self.__object_value_change(ai, aj, i, j):
                         return i, j
-                        # best_i, best_j = i, j
-                        # break
 
-                nsvp_list = [k for k in range(N) if k != i and not(
-                    0.0 < a[k] and a[k] < self.C)]
-                for j in nsvp_list:
+                all_list = [k for k in range(N) if k != i]
+                for j in all_list:
                     ai, aj = self.__solve(i, j)
                     if self.__object_value_change(ai, aj, i, j):
                         return i, j
-                        # best_i, best_j = i, j
-                        # break
-            i += 1
-        if best_i == None and best_j == None:
-            best_i, best_j = np.random.choice(N, 2)
-            # raise Exception("选不出合适的i,j\n")
-            # best_j = 1
-            # best_i = 0
 
         return best_i, best_j
 
@@ -158,7 +168,7 @@ class SVC(object):
         max_diff_E = 0.0
         best_j = None
         for j in range(N):
-            diff = abs(self.E[i] - self.E[j])
+            diff = fabs(self.E[i] - self.E[j])
             if j != i and diff > max_diff_E:
                 max_diff_E = diff
                 best_j = j
@@ -179,18 +189,20 @@ class SVC(object):
             print("i = %d j = %d diff = %.5f" % (i, j, diff))
 
         return diff >= self.eps
+        # return fabs(ai - self.dual_coef[i]) > 0.01
 
     def __check_KKT(self, i):
         # 检查训练样本(xi,yi)是否满足KKT条件
         ai = self.dual_coef[i]
+        eps = self.eps
         tmp = self.y[i] * self.__g(i)
-        if abs(ai) < self.eps and not (tmp >= 1.0):
-            return False
-        if 0.0 < ai and ai < self.C and not (abs(tmp - 1.0) < self.eps):
-            return False
-        if abs(ai - self.C) < self.eps and not (tmp <= 1.0):
-            return False
-        return True
+        if fabs(ai) < eps and tmp >= 1.0:
+            return True
+        if 0.0 < ai and ai < self.C and (fabs(tmp - 1.0) < eps):
+            return True
+        if fabs(ai - self.C) < eps and (tmp <= 1.0):
+            return True
+        return False
 
     def __solve(self, i, j):
         # 解两个变量的子问题
@@ -198,6 +210,8 @@ class SVC(object):
         aj_old = self.dual_coef[j]
 
         eta = self.K[i, i] + self.K[j, j] - 2 * self.K[i, j]
+        if eta < 1e-8:
+            eta = 1e-8
         diff_E = self.E[i] - self.E[j]
         aj_unc = aj_old + self.y[j] * diff_E / eta
 
@@ -229,6 +243,7 @@ class SVC(object):
             print("old: a%d = %f\t a%d = %f" %
                   (i, self.dual_coef[i], j, self.dual_coef[j]))
             print("new: a%d = %f\t a%d = %f\n" % (i, ai, j, aj))
+
         diff_i = ai - self.dual_coef[i]
         diff_j = aj - self.dual_coef[j]
         intercept_i = - self.E[i] - self.y[i] * self.K[i, i] * \
@@ -237,7 +252,12 @@ class SVC(object):
         intercept_j = - self.E[j] - self.y[i] * self.K[i, j] * \
             diff_i - self.y[j] * self.K[j, j] * diff_j + self.intercept
 
-        self.intercept = (intercept_i + intercept_j) / 2
+        if 0.0 < ai and ai < self.C:
+            self.intercept = intercept_i
+        elif 0.0 < aj and aj < self.C:
+            self.intercept = intercept_j
+        else:
+            self.intercept = (intercept_i + intercept_j) / 2
 
         self.dual_coef[i] = ai
         self.dual_coef[j] = aj
