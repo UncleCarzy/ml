@@ -1,230 +1,267 @@
 import numpy as np
-from sklearn import datasets
-import matplotlib.pyplot as plt
+from math import fabs
+from random import shuffle
 
 
-def rbf(gamma, x, xc):
-    diff = x - xc
-    return np.exp(- (diff * diff).sum(axis=0) / (2 * gamma * gamma)).reshape((1, -1))
+class SVC(object):
 
+    def __init__(self, C=1.0, eps=1e-4, kernel="rbf", max_iter=1000):
 
-class SVC:
-    """[C-SVM: support vector machine for classification]
-    """
-
-    def __init__(self, C=1.0, kernel="rbf", gammaType="auto"):
-        """[summary]
-
-        Keyword Arguments:
-            C {float} -- [regulariztion parameter,the strength of the regulariztion is inversely proportional to C] (default: {1.0})
-            kernel {str} -- [specifies the kernel type to be used in the algorithm."rbf": Radial Basis Function,高斯核函数] (default: {"rbf"})
-            gamma {str} -- [the parameter for kernel "rbf"] (default: {"auto"})
-        """
-        # the parameters for primal problem
+        assert kernel in (
+            "rbf", "linear"), "kernel should be one of ('rbf','linear')\n"
+        self.kernel = kernel
         self.C = C
-        self.weight = None
-        self.b = None
-        self.xi = None  # 松弛变量
-        self.X = None  # 输入
-        self.y = None  # 输入
+        self.coef = None
+        self.dual_coef = None
+        self.intercept = None
 
-        # the parameters for dual problem
-        self.alpha = None  # 拉格朗日乘子
-        self.Q = None  # Qij = yi * yj * K(xi,xj)
-        self.K = None  # 经核函数映射后的高维“特征矩阵” kernel matrix(PSD)
-        self.gredient = None  # 梯度
-        self.p = None
-        self.tao = 1e-8
-        self.epslion = 1e-4  # stopping criteria
+        self.support_vector = None
+        self.n_sv = None
+        self.n_feature = None
+        # 精度范围
+        self.eps = eps
 
-        self.m = None  # 训练集数据个数
-        self.nFeatures = None
-        self.gammaType = gammaType
-        self.gamma = 1.0
-
-    def __prepare(self, X, y):
-        # 私有方法
-        self.nFeatures, self.m = X.shape
-        self.X = X
-        self.y = y
-        self.y[y == 0] = -1
-       # print(self.y)
-        # 设置weight的shape
-        self.weight = np.zeros((self.m, 1))
-
-        # 设置rbf中的gamma
-        if self.gammaType == "auto":
-            self.gamma = 1 / self.nFeatures
-
-        # 计算kernel matrix
-        self.K = np.zeros((self.m, self.m))
-        for i in range(self.m):
-            self.K[i, :] = rbf(self.gamma, X, X[:, i, None])
-       # print("K shape: ", self.K.shape)
-
-        # 计算Q
-        self.Q = y.T @ y * self.K
-        #print("Q shape: ", self.Q.shape)
-
-        # 初始化alpha
-        self.p = - np.ones((self.m, 1))
-        self.alpha = np.zeros((self.m, 1))
-        self.gredient = np.zeros((self.m, 1)) + self.p
-
-    def __stoppingCondition(self):
-        epslion = self.epslion
-        self.Iup = []
-        self.Ilow = []
-        for t in range(self.m):
-            if(self.alpha[t, 0] < self.C and self.y[0, t] == 1) or (self.alpha[t, 0] > 0 and self.y[0, t] == -1):
-                self.Iup.append(t)
-            if(self.alpha[t, 0] < self.C and self.y[0, t] == -1) or (self.alpha[t, 0] > 0 and self.y[0, t] == 1):
-                self.Ilow.append(t)
-
-        idx = self.Iup[0]
-        mmax = - self.y[0, idx] * self.gredient[idx, 0]
-        for t in self.Iup:
-            tmp = - self.y[0, t] * self.gredient[t, 0]
-      #      print(tmp)
-            if tmp > mmax:
-                mmax = tmp
-
-        idx = self.Ilow[0]
-        mmin = - self.y[0, idx] * self.gredient[idx, 0]
-        for t in self.Ilow:
-            tmp = - self.y[0, t] * self.gredient[t, 0]
-            if tmp < mmin:
-                mmin = tmp
-      #  print("mmax = %f mmin = %f" % (mmax, mmin))
-
-        if mmax - mmin < epslion:
-            return True
-        else:
-            return False
-
-    def __workingSetSelect(self):
-        """[working set select]
-        """
-
-        idx = 0
-        maxi = -10000.0
-        for t in self.Iup:
-            tmp = - self.y[0, t] * self.gredient[t, 0]
-            if tmp >= maxi:
-                maxi = tmp
-                idx = t
-        i = idx
-
-        idx = 0
-        mini = 1.0
-        for t in self.Ilow:
-            tmpg = - self.y[0, t] * self.gredient[t, 0]
-            if tmpg < maxi:
-                ats = self.K[i, i] + self.K[t, t] - 2 * self.K[i, t]
-                bts = maxi - tmpg
-                if ats > 0:
-                    ats_ = ats
-                else:
-                    ats_ = self.tao
-                tmp = - (bts ** 2) / ats_  # 是个负数
-                if tmp < mini:
-                    idx = t
-                    mini = tmp
-        j = idx
-        return i, j
-
-    def __twoVariableSubProblem(self, i, j):
-        aij = self.Q[i, i] + self.Q[j, j] - 2 * self.Q[i, j]
-        if aij <= 0:
-            aij = self.tao
-        if self.y[0, i] != self.y[0, j]:
-            delta = (- self.gredient[i] - self.gredient[j]) / aij
-            diff = self.alpha[i] - self.alpha[j]
-            self.alpha[i] += delta
-            self.alpha[j] += delta
-            if diff > 0:
-                if self.alpha[j] < 0:  # region 3
-                    self.alpha[j] = 0
-                    self.alpha[i] = diff
-                elif self.alpha[i] > self.C:  # region 1
-                    self.alpha[i] = self.C
-                    self.alpha[j] = self.C - diff
-            else:
-                if self.alpha[i] < 0:  # region 4
-                    self.alpha[i] = 0
-                    self.alpha[j] = - diff
-                elif self.alpha[j] > self.C:  # region 2
-                    self.alpha[j] = self.C
-                    self.alpha[i] = self.C + diff
-        else:  # self.y[i] = self.y[j]
-            delta = (-self.gredient[i] + self.gredient[j]) / aij
-            sum = self.alpha[i] + self.alpha[j]
-            self.alpha[i] += delta
-            self.alpha[j] -= delta
-            if sum > self.C:
-                if self.alpha[i] > self.C:  # region 1
-                    self.alpha[i] = self.C
-                    self.alpha[j] = - self.C + sum
-                elif self.alpha[j] > self.C:  # region 2
-                    self.alpha[j] = self.C
-                    self.alpha[i] = - self.C + sum
-            else:  # sum <= self.C
-                if self.alpha[j] < 0:  # region 3
-                    self.alpha[j] = 0
-                    self.alpha[i] = sum
-                elif self.alpha[i] < 0:  # region 4
-                    self.alpha[i] = 0
-                    self.alpha[j] = sum
-
-    def __smo(self):
-        """
-        1.初始化alpha为零向量，计算初始梯度
-        2.如果alpha_k是stationary point，就跳出循环，结束求解。
-        否则，wws选择i，j，解两个变量的子问题
-        3.aij > 0 ，则求解子问题一
-         否则，求解子问题二
-        4.更新参数alpha 和 gredient，跳到2
-        """
-        self.alpha = np.zeros((self.m, 1))
-        self.gredient = np.zeros((self.m, 1)) + self.p
-        print(self.Q)
-        print(self.K)
-        while not self.__stoppingCondition():
-            i, j = self.__workingSetSelect()
-            aij = self.K[i, i] + self.K[j, j] - 2 * self.K[i, j]
-            print(aij)
-            print("i = %d j = %d" % (i, j))
-            self.__twoVariableSubProblem(i, j)
-            self.gredient[i] = self.Q[i, ] @ self.alpha + self.p[i]
-            self.gredient[j] = self.Q[j, ] @ self.alpha + self.p[j]
+        self.max_iter = max_iter
+        # 临时变量，训练完会删掉
+        self.E = None
+        self.K = None
+        self.y = None
+        self.N = None
 
     def fit(self, X, y):
-        self.__prepare(X, y)
-        self.__smo()
-        # weight算不出来的，只能算b（利用支持向量计算）
-        self.svidx = []
-        for i in range(self.m):
-            if self.alpha[i] > 0 and self.alpha[i] < self.C:
-                self.svidx.append(i)
-        self.b = (self.y[0, self.svidx] - (self.alpha[self.svidx, 0] @ self.y[0,
-                                                                              self.svidx] * self.Q[self.svidx, self.svidx]).sum(axis=0)).mean()
-        print(self.alpha)
-        print("b = %f" % self.b)
+        self.n_feature, N = X.shape
+        self.y = y
+        self.K = np.zeros((N, N))
+        for i in range(0, N):
+            for j in range(0, i + 1):
+                self.K[i, j] = self.K[j, i] = self.__kernel_function(
+                    X[:, i], X[:, j])
+
+        self.__smo(X, y)  # 求得dual_coef
+
+        mask = self.dual_coef > self.eps
+        self.n_sv = mask.sum()
+        self.dual_coef = self.dual_coef[mask]
+        X_sv, y_sv = X[:, mask], y[mask]
+        self.support_vector = (X_sv, y_sv)
+
+        # 只有线性核才可以直接计算出coef
+        if "linear" == self.kernel:
+            self.coef = X_sv @ (self.dual_coef * y_sv)
+        self.intercept = (y_sv - (self.dual_coef * y_sv)
+                          @ self.K[mask][:, mask]).mean()
+        del self.K
+        del self.y
+        return self
 
     def predict(self, X):
-        m = X.shape[1]
-        nsv = len(self.svidx)
-        tmp_K = np.zeros((nsv, m))
-        for i in range(nsv):
-            tmp_K[i, :] = rbf(self.gamma, X, self.X[:, i, None])
-        y_ = (self.alpha[self.svidx, 0] @ self.y[0, self.svidx]
-              * tmp_K).sum(axis=0, keepdims=True) + self.b
-        y_[y_ < 0] = -1
-        y_[y_ >= 0] = 1
-        return y_
+        X_sv, y_sv = self.support_vector
+        N = X.shape[1]
+        K = np.zeros((self.n_sv, N))
+        for i in range(self.n_sv):
+            for j in range(N):
+                K[i, j] = self.__kernel_function(X_sv[:, i], X[:, j])
 
-    def evaluate(self, X, y):
-        y_ = self.predict(X)
-        print(y)
-        print(y_)
-        return (y_ == y).mean()
+        y = (self.dual_coef * y_sv) @ K + self.intercept
+        y = np.squeeze(y)
+        return np.where(y > 0, 1.0, -1.0)
+
+    def __smo(self, X, y):
+        # 序列最小优化算法
+        self.__initialize()
+        iter = 0
+        while True:
+            i, j = self.__choose()
+            ai, aj = self.__solve(i, j)
+            # self.__object_value_change(ai, aj, i, j)
+            self.__update(ai, aj, i, j)
+            if self.__stopping() or iter > self.max_iter:
+                break
+            iter += 1
+        print("iter = ", iter)
+
+    def __initialize(self):
+        self.N = self.y.shape[0]
+        self.dual_coef = np.zeros(self.N)
+        self.intercept = 0.0
+        self.E = - self.y.copy()
+
+    def __stopping(self):
+        # 判断是否满足KKT条件
+        # print("max: %.3f\t min: %.3f\t mean:%.7f" %
+            #   (self.dual_coef.max(), self.dual_coef.min(), self.dual_coef.mean()))
+        # 这是在参数更新过程中一直保持的两个约束，所以肯定满足，不必再检查，
+        # 线性约束
+        # if not fabs(self.dual_coef @ self.y) < self.eps:
+        #     return False
+
+        # # 边界约束 0.0 <= alpha <= C
+        # if not (np.all(0.0 <= self.dual_coef) and np.all(self.dual_coef <= self.C)):
+        #     return False
+
+        # 不等式约束
+        for i in range(self.N):
+            if not self.__check_KKT(i):
+                return False
+        return True
+
+    def __choose_j_random(self, i):
+        while True:
+            j = np.random.choice(self.N, 1)[0]
+            if j != i:
+                return j
+
+    def __choose(self):
+        best_i, best_j = None, None
+        a = self.dual_coef
+        svp_list = [k for k in range(self.N) if (
+            0.0 < a[k] and a[k] < self.C)]
+        # shuffle(svp_list)
+        all_list = [k for k in range(self.N)]
+        # shuffle(all_list)
+        best_i, best_j = self.__choose_ij(svp_list)
+        if best_i == None and best_j == None:
+            best_i, best_j = self.__choose_ij(all_list)
+            if best_i == None and best_j == None:
+                best_i, best_j = np.random.choice(self.N, 2)
+                # raise Exception("选不出合适的i,j\n")
+        return best_i, best_j
+
+    def __choose_ij(self, index_list):
+        # 选择违背KKT条件（最厉害）的变量 alpha1, alpha2
+        # 外层循环首先遍历所有 0 < ai < C 的样本点，即在间隔边界上的支持向量点，检验它们是否满足KKT条件
+        # 如果这些样本点都满足KKT条件，那么遍历整个训练集，检验它们是否满足KKT条件
+        best_i, best_j = None, None
+        i = 0
+        a = self.dual_coef
+        for i in index_list:
+            if not self.__check_KKT(i):
+                j = self.__choose_j_by_maxE(i)
+                ai, aj = self.__solve(i, j)
+                if fabs(a[i] - ai) > self.eps:
+                    return i, j
+
+                svp_list = [k for k in range(self.N) if (k != i and
+                                                         0.0 < a[k] and a[k] < self.C)]
+                for j in svp_list:
+                    ai, aj = self.__solve(i, j)
+                    if fabs(a[i] - ai) > self.eps:
+                        return i, j
+
+                all_list = [k for k in range(self.N) if k != i]
+                for j in all_list:
+                    ai, aj = self.__solve(i, j)
+                    if fabs(a[i] - ai) > self.eps:
+                        return i, j
+
+        return best_i, best_j
+
+    def __choose_j_by_maxE(self, i):
+        max_diff_E = 0.0
+        best_j = None
+        for j in range(self.N):
+            diff = fabs(self.E[i] - self.E[j])
+            if j != i and diff > max_diff_E:
+                max_diff_E = diff
+                best_j = j
+        return best_j
+
+    def __object_value_change(self, ai, aj, i, j):
+        a = np.copy(self.dual_coef)
+        y = self.y
+        K = self.K
+        old_v = a[i] * y[i] * ((a * y) @ K[i]) + \
+            a[j] * y[j] * ((a * y) @ K[j]) - (a[i] + a[j])
+        a[i], a[j] = ai, aj
+        new_v = a[i] * y[i] * ((a * y) @ K[i]) + \
+            a[j] * y[j] * ((a * y) @ K[j]) - (a[i] + a[j])
+        diff = old_v - new_v
+        return diff >= self.eps
+
+    def __check_KKT(self, i):
+        # 检查训练样本(xi,yi)是否满足KKT条件
+        ai = self.dual_coef[i]
+        eps = self.eps
+        tmp = self.y[i] * self.__g(i)
+        if fabs(ai) < eps and tmp >= 1.0:
+            return True
+        if 0.0 < ai and ai < self.C and fabs(tmp - 1.0) < eps:
+            return True
+        if fabs(ai - self.C) < eps and tmp <= 1.0:
+            return True
+        return False
+
+    def __solve(self, i, j):
+        # 解两个变量的子问题
+        ai_old = self.dual_coef[i]
+        aj_old = self.dual_coef[j]
+
+        eta = self.K[i, i] + self.K[j, j] - 2 * self.K[i, j]
+        if eta < self.eps:
+            eta = self.eps * 10.0
+        diff_E = self.E[i] - self.E[j]
+        aj_unc = aj_old + self.y[j] * diff_E / eta
+
+        if self.y[i] != self.y[j]:
+            L = max(0, aj_old - ai_old)
+            H = min(self.C, self.C + aj_old - ai_old)
+        else:
+            L = max(0, aj_old + ai_old - self.C)
+            H = min(self.C, aj_old + ai_old)
+
+        if aj_unc > H:
+            aj = H
+        elif L <= aj_unc:
+            aj = aj_unc
+        else:
+            aj = L
+
+        ai = ai_old + self.y[i] * self.y[j] * (aj_old - aj)
+        return ai, aj
+
+    def __update(self, ai, aj, i, j):
+        """
+        解出子问题之后
+            更新 intercept
+            更新 dual_coef
+            更新 E
+        """
+
+        diff_i = ai - self.dual_coef[i]
+        diff_j = aj - self.dual_coef[j]
+        intercept_i = - self.E[i] - self.y[i] * self.K[i, i] * \
+            diff_i - self.y[j] * self.K[j, i] * diff_j + self.intercept
+
+        intercept_j = - self.E[j] - self.y[i] * self.K[i, j] * \
+            diff_i - self.y[j] * self.K[j, j] * diff_j + self.intercept
+
+        if 0.0 < ai and ai < self.C:
+            self.intercept = intercept_i
+        elif 0.0 < aj and aj < self.C:
+            self.intercept = intercept_j
+        else:
+            self.intercept = (intercept_i + intercept_j) / 2
+
+        self.dual_coef[i] = ai
+        self.dual_coef[j] = aj
+
+        # 这里要更新全部的E，而不能是Ei,和Ej
+        for i in range(self.N):
+            self.E[i] = self.__g(i) - self.y[i]
+
+    def __g(self, i):
+        return (self.dual_coef * self.y) @ self.K[i] + self.intercept
+
+    def __rbf(self, xi, xj):
+        variance = 1.0
+        diff = xi - xj
+        return np.exp(- (diff @ diff) / (2 * variance))
+
+    def __linear(self, xi, xj):
+        return xi @ xj
+
+    def __kernel_function(self, xi, xj):
+        if "linear" == self.kernel:
+            return self.__linear(xi, xj)
+        elif "rbf" == self.kernel:
+            return self.__rbf(xi, xj)

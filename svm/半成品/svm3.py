@@ -1,6 +1,6 @@
 import numpy as np
 from math import fabs
-from random import shuffle
+from random import shuffle, uniform
 
 
 class SVC(object):
@@ -27,7 +27,7 @@ class SVC(object):
         self.E = None
         self.K = None
         self.y = None
-
+        self.N = None
         self.Done = False
 
     def fit(self, X, y):
@@ -73,37 +73,54 @@ class SVC(object):
         # 序列最小优化算法
         self.__initialize()
         iter = 0
-        N = y.shape[0]
-        noChangeTimes = 0
-        while True:
+        a = self.dual_coef
+        entireSet = True
+        paramChanged = 0
+
+        while (iter < self.max_iter) and ((paramChanged > 0) or entireSet):
             paramChanged = 0
-            index_list = list(range(N))
-            # shuffle(index_list)
-            for i in index_list:
-                if not self.__check_KKT(i):
-                    if iter == 0 and i == 0:
-                        j = self.__choose_j_random(i)
-                    else:
-                        j = self.__choose_j_by_maxE(i)
-                    ai, aj = self.__solve(i, j)
-                    if fabs(aj - self.dual_coef[j]) > 1e-5:
-                        paramChanged += 1
-                        self.__update(ai, aj, i, j)
-            if paramChanged == 0:
-                noChangeTimes += 1
-            if noChangeTimes > 10 or iter > self.max_iter:
-                break
+            if entireSet:
+                index_list = list(range(self.N))
+                # shuffle(index_list)
+                for i in index_list:
+                    yEi = y[i] * self.__E(i)
+                    if (yEi < 0.0 and a[i] < self.C) or (yEi > 0.0 and a[i] > 0.0):
+                        j = self.__choose_j(i)
+                        ai, aj = self.__solve(i, j)
+                        if fabs(a[i] - ai) > self.eps:
+                            paramChanged += 1
+                            self.__update(ai, aj, i, j)
+            else:
+                nonBoundIs = np.nonzero((a > 0.0) * (a < self.C))[0].tolist()
+                # shuffle(nonBoundIs)
+                for i in nonBoundIs:
+                    yEi = y[i] * self.__E(i)
+                    if (yEi < 0.0 and a[i] < self.C) or (yEi > 0.0 and a[i] > 0.0):
+                        j = self.__choose_j(i)
+                        ai, aj = self.__solve(i, j)
+                        if fabs(a[i] - ai) > self.eps:
+                            paramChanged += 1
+                            self.__update(ai, aj, i, j)
+
+            if entireSet:
+                entireSet = False
+            elif paramChanged == 0:
+                entireSet = True
+
             print("iter = %d \t paramChanged = %d" % (iter, paramChanged))
             iter += 1
         print("iter = %d" % iter)
 
     def __initialize(self):
-        N = self.y.shape[0]
-        self.dual_coef = np.zeros(N)
+        self.N = self.y.shape[0]
+        self.dual_coef = np.zeros(self.N)
         self.intercept = 0.0
-        self.E = np.zeros(N)
-        for i in range(N):
-            self.E[i] = self.__g(i) - self.y[i]
+        self.E = - self.y.copy()
+
+        # for i in range(self.N):
+        #     # self.E[i] = self.__g(i) - self.y[i]
+        #     # self.__g(i) = 0.0
+        #     self.E[i] = - self.y[i]
 
     def __stopping(self):
         # 判断所有样本点是否满足KKT条件
@@ -116,26 +133,30 @@ class SVC(object):
     def __choose_j_random(self, i):
         N = self.y.shape[0]
         while True:
-            j = np.random.choice(N, 1)[0]
+            j = int(uniform(0, N))
             if j != i:
                 return j
 
-    def __choose_j_by_maxE(self, i):
-        N = self.y.shape[0]
-        max_diff_E = 0.0
+    def __choose_j(self, i):
+        max_diff_E = -1.0
         best_j = None
-        for j in range(N):
-            diff = fabs(self.E[i] - self.E[j])
-            if j != i and diff > max_diff_E:
-                max_diff_E = diff
-                best_j = j
+        index_list = list(range(self.N))
+        # shuffle(index_list)
+        if np.all(self.E == (-self.y)):
+            for j in index_list:
+                diff = fabs(self.E[i] - self.E[j])
+                if j != i and diff > max_diff_E:
+                    max_diff_E = diff
+                    best_j = j
+        else:
+            best_j = self.__choose_j_random(i)
         return best_j
 
     def __check_KKT(self, i):
         # 检查训练样本(xi,yi)是否满足KKT条件
         ai = self.dual_coef[i]
         eps = self.eps
-        tmp = self.y[i] * self.__g(i)
+        tmp = self.y[i] * self.__E(i) + 1.0
         if fabs(ai) < eps and tmp >= 1.0:
             return True
         if 0.0 < ai and ai < self.C and fabs(tmp - 1.0) < eps:
@@ -186,27 +207,27 @@ class SVC(object):
 
         diff_i = ai - self.dual_coef[i]
         diff_j = aj - self.dual_coef[j]
-        intercept_i = - self.E[i] - self.y[i] * self.K[i, i] * \
-            diff_i - self.y[j] * self.K[j, i] * diff_j + self.intercept
+        intercept_i = self.intercept - self.E[i] - self.y[i] * self.K[i, i] * \
+            diff_i - self.y[j] * self.K[j, i] * diff_j
 
-        intercept_j = - self.E[j] - self.y[i] * self.K[i, j] * \
-            diff_i - self.y[j] * self.K[j, j] * diff_j + self.intercept
+        intercept_j = self.intercept - self.E[j] - self.y[i] * self.K[i, j] * \
+            diff_i - self.y[j] * self.K[j, j] * diff_j
 
         if 0.0 < ai and ai < self.C:
             self.intercept = intercept_i
         elif 0.0 < aj and aj < self.C:
             self.intercept = intercept_j
         else:
-            self.intercept = (intercept_i + intercept_j) / 2
+            self.intercept = (intercept_i + intercept_j) / 2.0
 
         self.dual_coef[i] = ai
         self.dual_coef[j] = aj
 
-        self.E[i] = self.__g(i) - self.y[i]
-        self.E[j] = self.__g(j) - self.y[j]
+        for i in range(self.N):
+            self.E[i] = self.__E(i)
 
-    def __g(self, i):
-        return (self.dual_coef * self.y) @ self.K[i] + self.intercept
+    def __E(self, i):
+        return (self.dual_coef * self.y) @ self.K[i] + self.intercept - self.y[i]
 
     def __rbf(self, xi, xj):
         """

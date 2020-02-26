@@ -73,27 +73,27 @@ def innerL(i, oS):
         alphaIold = oS.alphas[i].copy()
         alphaJold = oS.alphas[j].copy()
         if (oS.labelMat[i] != oS.labelMat[j]):
-            L = max(0.0, alphaJold - alphaIold)
-            H = min(oS.C, oS.C + alphaJold - alphaIold)
+            L = max(0.0, oS.alphas[j] - oS.alphas[i])
+            H = min(oS.C, oS.C + oS.alphas[j] - oS.alphas[i])
         else:
-            L = max(0.0, alphaJold + alphaIold - oS.C)
-            H = min(oS.C, alphaJold + alphaIold)
+            L = max(0.0, oS.alphas[j] + oS.alphas[i] - oS.C)
+            H = min(oS.C, oS.alphas[j] + oS.alphas[i])
 
-        if abs(L - H) < 1e-5:
+        if abs(L - H) < oS.tol:
             # print("L == H")
             return 0
-        eta = 2.0 * oS.X[i, :] * oS.X[j, :].T - oS.X[i, :] * oS.X[i, :].T - \
-            oS.X[j, :] * oS.X[j, :].T
+        eta = oS.X[i, :] * oS.X[i, :].T + oS.X[j, :] * \
+            oS.X[j, :].T - 2.0 * oS.X[i, :] * oS.X[j, :].T
 
-        if eta >= 0.0:
+        if eta <= 0.0:
             # print("eta >= 0")
             return 0
 
-        oS.alphas[j] -= oS.labelMat[j] * (Ei-Ej) / eta
+        oS.alphas[j] += oS.labelMat[j] * (Ei-Ej) / eta
         oS.alphas[j] = clipAlpha(oS.alphas[j], H, L)
         updateEk(oS, j)
 
-        if abs(oS.alphas[j] - alphaJold) < 1e-5:
+        if abs(oS.alphas[j] - alphaJold) < oS.tol:
             # print("j not moving enough")
             return 0
 

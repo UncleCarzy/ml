@@ -33,7 +33,7 @@ def load_data(dataset_name, n_features=2):
 def test():
     X, y = load_data("iris", 2)
     start = time.time()
-    b1, alpha = smoP(X.T, y, 1.0, 1e-5, 500)
+    b1, alpha = smoP(X.T, y, 1.0, 1e-10, 500)
     alpha = np.squeeze(np.array(alpha))
     w1 = np.squeeze((alpha * y) @ X.T)
     b1 = np.squeeze(np.array(b1))

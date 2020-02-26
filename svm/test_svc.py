@@ -8,7 +8,7 @@ from sklearn.decomposition import PCA
 from sklearn.metrics import accuracy_score
 from sklearn.utils import shuffle
 
-from svm3 import SVC
+from svm import SVC
 from svm_by_pkg import SSVM
 
 
@@ -29,15 +29,19 @@ def load_data(dataset_name, n_features=2):
     return X, y
 
 
-def plot_split_line(clf1, clf2, X, y, filename):
+def plot_split_line(dataName, clf1, clf2, X, y, filename):
     plt.style.use("ggplot")
     plt.figure(figsize=(5, 4))
     plt.scatter(X[0, :], X[1, :], c=y)
 
     # 画分割线
     def f(x, w, b): return (-w[0] / w[1]) * x - (b / w[1])
-    x = np.linspace(-3, 1.5)
-    # x = np.linspace(X[0, :].min() / 20, X[0, :].max()/10)
+
+    if dataName == "iris":
+        x = np.linspace(-3, 1.5)
+    elif dataName == "wine":
+        x = np.linspace(0, 100)
+
     w1, b1 = clf1.coef, clf1.intercept
     plt.plot(x, f(x, w1, b1), 'k--', label="SMO")
 
@@ -47,10 +51,10 @@ def plot_split_line(clf1, clf2, X, y, filename):
     plt.savefig(filename, dpi=300)
 
 
-def test():
-    X, y = load_data("iris", 2)
+def test(dataName):
+    X, y = load_data(dataName, 2)
     start = time.time()
-    clf1 = SVC(C=1.0, kernel="linear", eps=1e-3, max_iter=500)
+    clf1 = SVC(C=1.0, kernel="linear", eps=1e-5, max_iter=2000)
     clf1.fit(X, y)
     print('time span:', time.time() - start)
     y_1 = clf1.predict(X)
@@ -70,9 +74,11 @@ def test():
     print("coef: clf1 = ", clf1.coef, " \t clf2 = ", clf2.coef)
     print("intercept: clf1 = ", clf1.intercept, " \t clf2 = ", clf2.intercept)
 
-    plot_split_line(clf1, clf2, X, y, "svm\\iris_SVC3.png")
+    plot_split_line(dataName, clf1, clf2, X, y,
+                    "svm\\" + dataName + "_SVC.png")
 
 
 if __name__ == "__main__":
     # sys.stdout = open("svm\\out.txt", "w")
-    test()
+    test("iris")
+    test("wine")

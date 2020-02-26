@@ -74,77 +74,53 @@ class SVC(object):
         self.__initialize()
         iter = 0
         N = y.shape[0]
-        a = self.dual_coef
-        entireSet = True
-        paramChanged = 0
-
-        while (iter < self.max_iter) and ((paramChanged > 0) or entireSet):
+        noChangeTimes = 0
+        while True:
             paramChanged = 0
-            if entireSet:
-                for i in range(N):
-                    tmp = y[i] * self.__g(i)
-                    if (tmp < 1.0 and a[i] < self.C) or (tmp > 1.0 and a[i] > 0.0):
-                        j = self.__choose_j(i)
-                        ai, aj = self.__solve(i, j)
-                        if fabs(a[i] - ai) > 1e-5:
-                            paramChanged += 1
-                            self.__update(ai, aj, i, j)
-            else:
-                nonBoundIs = np.nonzero((a > 0.0) * (a < self.C))[0]
-                for i in nonBoundIs:
-                    tmp = y[i] * self.__g(i)
-                    if (tmp < 1.0 and a[i] < self.C) or (tmp > 1.0 and a[i] > 0.0):
-                        j = self.__choose_j(i)
-                        ai, aj = self.__solve(i, j)
-                        if fabs(a[i] - ai) > 1e-5:
-                            paramChanged += 1
-                            self.__update(ai, aj, i, j)
-
-            if entireSet:
-                entireSet = False
-            elif paramChanged == 0:
-                entireSet = True
-
+            index_list = list(range(N))
+            # shuffle(index_list)
+            for i in index_list:
+                if not self.__check_KKT(i):
+                    j = self.__choose_j_by_maxE(i)
+                    ai, aj = self.__solve(i, j)
+                    if fabs(aj - self.dual_coef[j]) > self.eps:
+                        paramChanged += 1
+                        self.__update(ai, aj, i, j)
+            if paramChanged == 0:
+                noChangeTimes += 1
+            if noChangeTimes > 10 or iter > self.max_iter:
+                break
             print("iter = %d \t paramChanged = %d" % (iter, paramChanged))
             iter += 1
         print("iter = %d" % iter)
 
     def __initialize(self):
-        N = self.y.shape[0]
-        self.dual_coef = np.zeros(N)
+        self.N = self.y.shape[0]
+        self.dual_coef = np.zeros(self.N)
         self.intercept = 0.0
-        self.E = np.zeros(N)
-        for i in range(N):
-            self.E[i] = self.__g(i) - self.y[i]
+        self.E = - self.y.copy()
 
     def __stopping(self):
         # 判断所有样本点是否满足KKT条件
-        N = self.y.shape[0]
-        for i in range(N):
+        for i in range(self.N):
             if not self.__check_KKT(i):
                 return False
         return True
 
     def __choose_j_random(self, i):
-        N = self.y.shape[0]
         while True:
-            j = np.random.choice(N, 1)[0]
+            j = np.random.choice(self.N, 1)[0]
             if j != i:
                 return j
 
-    def __choose_j(self, i):
-        # N = self.y.shape[0]
+    def __choose_j_by_maxE(self, i):
         max_diff_E = 0.0
         best_j = None
-        validEindexlist = np.nonzero(self.E)[0]
-        if len(validEindexlist) > 0:
-            for j in validEindexlist:
-                diff = fabs(self.E[i] - self.E[j])
-                if j != i and diff > max_diff_E:
-                    max_diff_E = diff
-                    best_j = j
-        else:
-            best_j = self.__choose_j_random(i)
+        for j in range(self.N):
+            diff = fabs(self.E[i] - self.E[j])
+            if j != i and diff > max_diff_E:
+                max_diff_E = diff
+                best_j = j
         return best_j
 
     def __check_KKT(self, i):
@@ -218,8 +194,8 @@ class SVC(object):
         self.dual_coef[i] = ai
         self.dual_coef[j] = aj
 
-        self.E[i] = self.__g(i) - self.y[i]
-        self.E[j] = self.__g(j) - self.y[j]
+        for i in range(self.N):
+            self.E[i] = self.__g(i) - self.y[i]
 
     def __g(self, i):
         return (self.dual_coef * self.y) @ self.K[i] + self.intercept
