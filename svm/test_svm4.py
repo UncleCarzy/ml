@@ -10,6 +10,7 @@ from sklearn.utils import shuffle
 
 from svm3 import SVC
 from svm_by_pkg import SSVM
+from svm4 import smoP
 
 
 def load_data(dataset_name, n_features=2):
@@ -29,7 +30,23 @@ def load_data(dataset_name, n_features=2):
     return X, y
 
 
-def plot_split_line(clf1, clf2, X, y, filename):
+def test():
+    X, y = load_data("iris", 2)
+    start = time.time()
+    b1, alpha = smoP(X.T, y, 1.0, 1e-5, 500)
+    alpha = np.squeeze(np.array(alpha))
+    w1 = np.squeeze((alpha * y) @ X.T)
+    b1 = np.squeeze(np.array(b1))
+    print('time span:', time.time() - start)
+
+    start = time.time()
+    clf2 = SSVM()
+    clf2.fit_dual_problem(X, y)
+    print('time span:', time.time() - start)
+
+    print("coef: clf1 = ", w1, " \t clf2 = ", clf2.coef)
+    print("intercept: clf1 = ", b1, " \t clf2 = ", clf2.intercept)
+
     plt.style.use("ggplot")
     plt.figure(figsize=(5, 4))
     plt.scatter(X[0, :], X[1, :], c=y)
@@ -38,39 +55,12 @@ def plot_split_line(clf1, clf2, X, y, filename):
     def f(x, w, b): return (-w[0] / w[1]) * x - (b / w[1])
     x = np.linspace(-3, 1.5)
     # x = np.linspace(X[0, :].min() / 20, X[0, :].max()/10)
-    w1, b1 = clf1.coef, clf1.intercept
     plt.plot(x, f(x, w1, b1), 'k--', label="SMO")
 
     w2, b2 = clf2.coef, clf2.intercept
     plt.plot(x, f(x, w2, b2), 'r--', label="QP")
     plt.legend()
-    plt.savefig(filename, dpi=300)
-
-
-def test():
-    X, y = load_data("iris", 2)
-    start = time.time()
-    clf1 = SVC(C=1.0, kernel="linear", eps=1e-3, max_iter=500)
-    clf1.fit(X, y)
-    print('time span:', time.time() - start)
-    y_1 = clf1.predict(X)
-
-    start = time.time()
-    clf2 = SSVM()
-    clf2.fit_dual_problem(X, y)
-    print('time span:', time.time() - start)
-    y_2 = clf2.predict(X)
-
-    print("ACC: clf1 = %.4f \t clf2 = %.4f" %
-          (accuracy_score(y_1, y), accuracy_score(y_2, y)))
-    print("n_sv: clf1 = %d \t clf2 = %d" % (clf1.n_sv, clf2.n_sv))
-    print("dual_coef:")
-    print("clf1 = ", clf1.dual_coef)
-    print("clf2 = ", clf2.dual_coef)
-    print("coef: clf1 = ", clf1.coef, " \t clf2 = ", clf2.coef)
-    print("intercept: clf1 = ", clf1.intercept, " \t clf2 = ", clf2.intercept)
-
-    plot_split_line(clf1, clf2, X, y, "svm\\iris_SVC3.png")
+    plt.savefig("svm\\svm4.png", dpi=300)
 
 
 if __name__ == "__main__":
