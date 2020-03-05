@@ -54,7 +54,7 @@ def plot_split_line(dataName, clf1, clf2, X, y, filename):
 def test(dataName):
     X, y = load_data(dataName, 2)
     start = time.time()
-    clf1 = SVC(C=1.0, kernel="linear", eps=1e-5, max_iter=2000)
+    clf1 = SVC(C=1.0, kernel="linear", eps=1e-10, max_iter=2000)
     clf1.fit(X, y)
     print('time span:', time.time() - start)
     y_1 = clf1.predict(X)
@@ -81,4 +81,4 @@ def test(dataName):
 if __name__ == "__main__":
     # sys.stdout = open("svm\\out.txt", "w")
     test("iris")
-    test("wine")
+    # test("wine")

@@ -145,13 +145,14 @@ class SVC(object):
                                                          0.0 < a[k] and a[k] < self.C)]
                 for j in svp_list:
                     ai, aj = self.__solve(i, j)
-                    if fabs(a[i] - ai) > self.eps:
+                    # fabs(a[i] - ai) > self.eps
+                    if self.__object_value_change(ai, aj, i, j):
                         return i, j
 
                 all_list = [k for k in range(self.N) if k != i]
                 for j in all_list:
                     ai, aj = self.__solve(i, j)
-                    if fabs(a[i] - ai) > self.eps:
+                    if self.__object_value_change(ai, aj, i, j):
                         return i, j
 
         return best_i, best_j

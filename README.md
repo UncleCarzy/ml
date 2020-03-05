@@ -1,4 +1,3 @@
 # ml
-implement machine learning algorithms by hand 
-
+implement machine learning algorithms by hand
 
